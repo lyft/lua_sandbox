@@ -525,6 +525,103 @@ lsb_lua_sandbox* lsb_create(void *parent,
   return lsb;
 }
 
+lua_sandbox* lsb_create_custom(void* parent,
+                               const char* lua_file,
+                               const char* config)
+{
+  if (!lua_file) {
+    return NULL;
+  }
+
+  bool seeded = false;
+#if _WIN32
+  if (_putenv("TZ=UTC") != 0) {
+    return NULL;
+  }
+  // todo use CryptGenRandom to seed srand
+#else
+  if (setenv("TZ", "UTC", 1) != 0) {
+    return NULL;
+  }
+
+  FILE* fh = fopen("/dev/urandom", "r");
+  if (fh) {
+    unsigned seed;
+    unsigned char advance;
+    if (fread(&seed, sizeof(unsigned), 1, fh) == 1 &&
+        fread(&advance, sizeof(char), 1, fh) == 1) {
+      srand(seed);
+      // advance the sequence a random amount
+      for (unsigned i = 0; i < advance; ++i) {
+        rand();
+      }
+      seeded = true;
+    }
+    fclose(fh);
+  }
+#endif
+  if (!seeded) {
+    srand((unsigned)time(NULL));
+  }
+
+  lua_sandbox* lsb = malloc(sizeof(lua_sandbox));
+  memset(lsb->usage, 0, sizeof(lsb->usage));
+  if (!lsb) {
+    return NULL;
+  }
+#ifdef LUA_JIT
+  lsb->lua = luaL_newstate();
+#else
+  lsb->lua = lua_newstate(memory_manager, lsb);
+#endif
+
+  if (!lsb->lua) {
+    free(lsb);
+    return NULL;
+  }
+
+  // create config table
+  lua_pushfstring(lsb->lua, "return %s", config);
+  if (luaL_dostring(lsb->lua, lua_tostring(lsb->lua, -1))
+      || lua_type(lsb->lua, -1) != LUA_TTABLE) {
+    lua_close(lsb->lua);
+    lsb->lua = NULL;
+    free(lsb);
+    return NULL;
+  }
+  size_t memory_limit = get_usage_config(lsb->lua, -1, "memory_limit");
+  size_t instruction_limit = get_usage_config(lsb->lua, -1, "instruction_limit");
+  size_t output_limit = get_usage_config(lsb->lua, -1, "output_limit");
+  lua_setfield(lsb->lua, LUA_REGISTRYINDEX, "lsb_config");
+  lua_pop(lsb->lua, 1); // remove configuration string
+
+  lsb->parent = parent;
+  lsb->usage[LSB_UT_MEMORY][LSB_US_LIMIT] = memory_limit;
+  lsb->usage[LSB_UT_INSTRUCTION][LSB_US_LIMIT] = instruction_limit;
+  lsb->usage[LSB_UT_OUTPUT][LSB_US_LIMIT] = output_limit;
+  lsb->state = LSB_UNKNOWN;
+  lsb->error_message[0] = 0;
+  lsb->output.pos = 0;
+  lsb->output.maxsize = output_limit;
+  if (output_limit && output_limit < LSB_OUTPUT_SIZE) {
+    lsb->output.size = output_limit;
+  } else {
+    lsb->output.size = LSB_OUTPUT_SIZE;
+  }
+  lsb->output.data = malloc(lsb->output.size);
+  size_t len = strlen(lua_file);
+  lsb->lua_file = malloc(len + 1);
+
+  if (!lsb->output.data || !lsb->lua_file) {
+    free(lsb->lua_file);
+    lua_close(lsb->lua);
+    lsb->lua = NULL;
+    free(lsb);
+    return NULL;
+  }
+  strcpy(lsb->lua_file, lua_file);
+  return lsb;
+}
 
 lsb_err_value lsb_init(lsb_lua_sandbox *lsb, const char *state_file)
 {
