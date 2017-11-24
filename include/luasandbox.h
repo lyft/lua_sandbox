@@ -103,34 +103,6 @@ lsb_create(void *parent, const char *lua_file, const char *cfg,
            lsb_logger *logger);
 
 /**
- * Allocates and initializes the structure around the Lua sandbox allowing
- * full specification of the sandbox configuration using a Lua configuration
- * string.
- *
- * {
- * memory_limit = 1024*1024*1,
- * instruction_limit = 10000,
- * output_limit = 64*1024,
- * path = '/modules/?.lua',
- * cpath = '/modules/?.so',
- * remove_entries = {
- *    [''] = {'collectgarbage','coroutine','dofile','load','loadfile'"
- *           ",'loadstring','newproxy','print'},
- *    os = {'getenv','execute','exit','remove','rename','setlocale','tmpname'}
- * },
- * disable_modules = {io = 1}
- * }
- *
- * @param parent Pointer to associate the owner to this sandbox.
- * @param lua_file Filename of the Lua script to run in this sandbox.
- * @param config Lua structure defining the full sandbox restrictions.
- * @return lua_sandbox Sandbox pointer or NULL on failure.
- */
-LSB_EXPORT lua_sandbox* lsb_create_custom(void* parent,
-                                          const char* lua_file,
-                                          const char* config);
-
-/**
  * Initializes the Lua sandbox and loads/runs the Lua script that was specified
  * in lua_create_sandbox.
  *
